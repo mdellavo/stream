@@ -1,10 +1,12 @@
+import math
 import datetime
 import collections
 
-from sqlalchemy import Column, String, Integer, ForeignKey, DateTime
+from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, or_, and_
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
 
+from stream import config
 
 Base = declarative_base()
 session_factory = sessionmaker(expire_on_commit=False)
@@ -26,13 +28,36 @@ class Track(Base):
             rv[item.key].append(item.value)
         return rv
 
+    def get_one(self, k):
+        return self.metatada[k][0]
+
     @property
     def mime(self):
-        return self.metatada[MetadataKeys.MIME][0]
+        return self.get_one(MetadataKeys.MIME)
 
     @property
     def length(self):
-        return float(self.metatada[MetadataKeys.LENGTH][0])
+        return float(self.get_one(MetadataKeys.LENGTH))
+
+    @property
+    def num_segments(self):
+        return math.ceil(self.length / config.TARGET_DURATION)
+
+    @property
+    def title(self):
+        return self.get_one(MetadataKeys.TITLE)
+
+    @property
+    def artist(self):
+        return self.get_one(MetadataKeys.ARTIST)
+
+    @property
+    def album(self):
+        return self.get_one(MetadataKeys.ALBUM)
+
+    @property
+    def track(self):
+        return self.get_one(MetadataKeys.TRACK)
 
 
 class MetadataKeys(object):
@@ -83,7 +108,11 @@ class Playlist(Base):
     @property
     def upcoming_schedule(self):
         now = datetime.datetime.utcnow()
-        return self.schedule.filter(ScheduledTrack.start_time > now)
+        query = or_(
+            and_(ScheduledTrack.start_time < now, ScheduledTrack.end_time > now),
+            ScheduledTrack.start_time > now
+        )
+        return self.schedule.filter(query)
 
     def append(self, track):
         last_scheduled = (Session.query(ScheduledTrack)

@@ -28,7 +28,7 @@ def main():
 
     asyncio.ensure_future(playlist.schedule(pl))
 
-    app = server.create_server(pl)
+    app = server.create_server()
     web.run_app(app, loop=loop)
 
     return 0

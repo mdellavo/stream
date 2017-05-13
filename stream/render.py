@@ -9,8 +9,9 @@ def chain(it):
 
 
 class M3U8Renderer(object):
-    def __init__(self, playlists, target_duration=config.TARGET_DURATION):
-        self.playlists = playlists
+    def __init__(self, playlist, root, target_duration=config.TARGET_DURATION):
+        self.playlist = playlist
+        self.root = root
         self.target_duration = target_duration
 
     def render_format_identifier(self):
@@ -19,25 +20,17 @@ class M3U8Renderer(object):
     def render_tag_duration(self):
         return ["#EXT-X-TARGETDURATION:{}".format(self.target_duration)]
 
-    def render_segment(self, item, segment_num):
+    def render_segment(self, track, segment_num):
         return [
-            "#EXTINF:{},{}".format(self.target_duration, item.title),
-            "/asset/{}/{}/{}".format(item.playlist.name, item.name, segment_num),
+            "#EXTINF:{},{}".format(self.target_duration, track.title),
+            "{}/segments/{}/{}".format(self.root, track.digest, segment_num),
         ]
 
-    def render_playlist_item(self, item):
-        audio = AudioSegment.from_file(item.cache_path)
-        segments, remainder = divmod(round(audio.duration_seconds), self.target_duration)
-        lines = chain(self.render_segment(item, i) for i in range(segments))
-        if remainder:
-            pass
-        return lines
+    def render_track(self, track):
+        return chain(self.render_segment(track, i) for i in range(track.num_segments))
 
     def render_playlist(self, playlist):
-        return chain(self.render_playlist_item(i) for i in playlist.items)
-
-    def render_playlists(self):
-        return chain(self.render_playlist(p) for p in self.playlists)
+        return chain(self.render_track(i.track) for i in playlist.upcoming_schedule)
 
     def render_endlist(self):
         return ["EXT-X-ENDLIST"]
@@ -46,7 +39,7 @@ class M3U8Renderer(object):
         lines = (
             self.render_format_identifier() +
             self.render_tag_duration() +
-            self.render_playlists() +
+            self.render_playlist(self.playlist) +
             self.render_endlist()
         )
         return "\n".join(lines)
