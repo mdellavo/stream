@@ -57,7 +57,7 @@ class Track(Base):
 
     @property
     def track(self):
-        return self.get_one(MetadataKeys.TRACK)
+        return int(self.get_one(MetadataKeys.TRACK))
 
 
 class MetadataKeys(object):

@@ -13,7 +13,7 @@ class M3U8Renderer(object):
     def __init__(self, playlist, root, target_duration=config.TARGET_DURATION):
         self.playlist = playlist
         self.root = root
-        self.target_duration = target_duration
+        self.target_duration = float(target_duration)
 
     def render_format_identifier(self):
         return ["#EXTM3U"]
@@ -25,8 +25,15 @@ class M3U8Renderer(object):
         ]
 
     def render_segment(self, track, segment_num):
+        complete_segments, remainder = divmod(track.length, self.target_duration)
+        if segment_num < complete_segments:
+            duration = self.target_duration
+        else:
+            duration = remainder
+
+        title = "{} - {} - {}".format(track.artist, track.album, track.title)
         return [
-            "#EXTINF:{},{}".format(self.target_duration, track.title),
+            "#EXTINF:{},{}".format(float(duration), title),
             "{}/segments/{}/{}".format(self.root, track.digest, segment_num),
         ]
 
@@ -35,12 +42,14 @@ class M3U8Renderer(object):
 
         now = datetime.datetime.utcnow()
         if scheduled_track.start_time < now:
-            offset = int(math.floor((now - scheduled_track.start_time).total_seconds() / self.target_duration))
+            offset = int(math.ceil((now - scheduled_track.start_time).total_seconds() / self.target_duration))
+            start_time = now
         else:
             offset = 0
+            start_time = scheduled_track.start_time
 
         return [
-            "#EXT-X-PROGRAM-DATE-TIME:{}".format(scheduled_track.start_time.isoformat("T")),
+            "#EXT-X-PROGRAM-DATE-TIME:{}".format(start_time.isoformat("T")),
         ] + chain(self.render_segment(track, i) for i in range(offset, track.num_segments))
 
     def render_playlist(self, playlist):
