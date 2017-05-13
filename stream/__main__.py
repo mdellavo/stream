@@ -12,7 +12,7 @@ log = logging.getLogger("main")
 
 
 def main():
-    engine = create_engine('sqlite:///stream.sqlite')
+    engine = create_engine(config.DB_URL)
     model.Base.metadata.create_all(engine)
     model.Session.bind = engine
 

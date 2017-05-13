@@ -1,7 +1,8 @@
+import math
 import itertools
-from stream import config
+import datetime
 
-from pydub import AudioSegment
+from stream import config
 
 
 def chain(it):
@@ -17,8 +18,11 @@ class M3U8Renderer(object):
     def render_format_identifier(self):
         return ["#EXTM3U"]
 
-    def render_tag_duration(self):
-        return ["#EXT-X-TARGETDURATION:{}".format(self.target_duration)]
+    def render_preamble(self):
+        return [
+            "#EXT-X-TARGETDURATION:{}".format(self.target_duration),
+            "#EXT-X-INDEPENDENT-SEGMENTS",
+        ]
 
     def render_segment(self, track, segment_num):
         return [
@@ -26,19 +30,29 @@ class M3U8Renderer(object):
             "{}/segments/{}/{}".format(self.root, track.digest, segment_num),
         ]
 
-    def render_track(self, track):
-        return chain(self.render_segment(track, i) for i in range(track.num_segments))
+    def render_track(self, scheduled_track):
+        track = scheduled_track.track
+
+        now = datetime.datetime.utcnow()
+        if scheduled_track.start_time < now:
+            offset = int(math.floor((now - scheduled_track.start_time).total_seconds() / self.target_duration))
+        else:
+            offset = 0
+
+        return [
+            "#EXT-X-PROGRAM-DATE-TIME:{}".format(scheduled_track.start_time.isoformat("T")),
+        ] + chain(self.render_segment(track, i) for i in range(offset, track.num_segments))
 
     def render_playlist(self, playlist):
-        return chain(self.render_track(i.track) for i in playlist.upcoming_schedule)
+        return chain(self.render_track(i) for i in playlist.upcoming_schedule)
 
     def render_endlist(self):
-        return ["EXT-X-ENDLIST"]
+        return ["#EXT-X-ENDLIST"]
 
     def render(self):
         lines = (
             self.render_format_identifier() +
-            self.render_tag_duration() +
+            self.render_preamble() +
             self.render_playlist(self.playlist) +
             self.render_endlist()
         )
