@@ -1,6 +1,8 @@
+import logging
 import asyncio
 from asyncio.queues import Queue
 
+log = logging.getLogger(__name__)
 TERMINATOR = object()
 
 
@@ -18,8 +20,12 @@ class TaskPool(object):
             future, task = await self.tasks.get()
             if task is TERMINATOR:
                 break
-            result = await asyncio.wait_for(task, None, loop=self.loop)
-            future.set_result(result)
+            try:
+                result = await asyncio.wait_for(task, None, loop=self.loop)
+                future.set_result(result)
+            except Exception as e:
+                log.exception("task raised exception")
+                future.set_exception(e)
 
     def submit(self, task):
         future = asyncio.Future(loop=self.loop)

@@ -2,3 +2,4 @@
 *.pyc
 cache
 *.m3u
+*.sqlite
