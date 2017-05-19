@@ -18,7 +18,7 @@ class Cache(object):
         return os.path.join(self.get_cache_dir(track), filename)
 
     def get_segment_format(self, track):
-        return "{}.%05d.m4a".format(track.digest)
+        return "{}.%05d.ts".format(track.digest)
 
     def get_segment_format_path(self, track):
         return os.path.join(self.get_cache_dir(track), self.get_segment_format(track))

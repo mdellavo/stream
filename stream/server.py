@@ -39,9 +39,10 @@ async def handle_playlist(request):
     renderer = M3U8Renderer(playlist, "http://localhost:8080")
     filename = playlist.name + ".m3u8"
     headers = {
+        "Content-Type": "audio/x-mpegurl",
         "Content-Disposition": "inline; filename=\"{}\"".format(filename),
     }
-    return web.Response(text=renderer.render(), content_type="application/x-mpegURL", headers=headers)
+    return web.Response(body=renderer.render().encode("utf-8"), headers=headers)
 
 
 async def handle_segment(request):
@@ -50,6 +51,10 @@ async def handle_segment(request):
     track = Session.query(Track).filter_by(digest=digest).one()
     segment_path = Cache().get_segment_path(track, segment_num)
     return web.FileResponse(segment_path)
+
+
+async def handle_playlists(request):
+    pass
 
 
 def create_server():

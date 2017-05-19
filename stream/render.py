@@ -10,11 +10,11 @@ def chain(it):
 
 
 class M3U8Renderer(object):
-    def __init__(self, playlist, root, sequence=0, target_duration=config.TARGET_DURATION, version=7):
+    def __init__(self, playlist, root, sequence=0, target_duration=config.TARGET_DURATION, version=3):
         self.playlist = playlist
         self.root = root
         self.sequence = sequence
-        self.target_duration = float(target_duration)
+        self.target_duration = int(target_duration)
         self.version = version
 
     def render_format_identifier(self):
@@ -22,9 +22,10 @@ class M3U8Renderer(object):
 
     def render_preamble(self):
         return [
+            "#EXT-X-ALLOW-CACHE:YES",
             "#EXT-X-VERSION:{}".format(self.version),
             "#EXT-X-TARGETDURATION:{}".format(self.target_duration),
-            "#EXT-X-MEDIA-SEQUENCE:{}".format(self.sequence),
+            #"#EXT-X-MEDIA-SEQUENCE:{}".format(self.sequence),
         ]
 
     def render_segment(self, track, segment_num):
@@ -36,6 +37,7 @@ class M3U8Renderer(object):
 
         title = "{} - {} - {}".format(track.artist, track.album, track.title)
         return [
+            #"#EXT-X-DISCONTINUITY",
             "#EXTINF:{},{}".format(float(duration), title),
             "{}/segments/{}/{}".format(self.root, track.digest, segment_num),
         ]

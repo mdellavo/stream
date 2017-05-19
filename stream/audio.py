@@ -1,15 +1,15 @@
 import os
-import subprocess
 import hashlib
 import tempfile
 import urllib
 import logging
+import asyncio
 
 from aiohttp import ClientSession
 import mutagen
 
 from stream import config
-from stream.model import Session, Playlist, Track, SeenUrl, TrackMetadata, MetadataKeys
+from stream.model import Session, Track, SeenUrl, TrackMetadata, MetadataKeys
 from stream.cache import Cache
 from stream.utils import TaskPool
 
@@ -19,13 +19,20 @@ log = logging.getLogger(__name__)
 async def segment_track(track_path, output_path, segment_duration):
     args = [
         "/usr/local/bin/ffmpeg",
-        "-loglevel", "-8",
+        #"-loglevel", "-8",
         "-i", track_path,
+        "-vn",
+        "-acodec", "aac",
+        "-b:a", config.BITRATE,
+        "-map", "0",
+        "-flags", "+global_header",
         "-f", "segment",
+        "-segment_format", "mpeg_ts",
         "-segment_time", str(segment_duration),
         output_path,
     ]
-    return not subprocess.check_call(args)
+    proc = await asyncio.create_subprocess_exec(*args, stdout=None, stdin=None, stderr=None)
+    return await proc.wait()
 
 
 ID3_KEY_MAP = {
@@ -82,8 +89,8 @@ async def prepare_track(loop, url):
             os.makedirs(cache.get_cache_dir(track), exist_ok=True)
             cache_path = cache.get_cache_path(track)
             os.rename(f.name, cache_path)
-
             await segment_track(cache_path, cache.get_segment_format_path(track), config.TARGET_DURATION)
+            os.remove(cache_path)
 
     seen = SeenUrl(url=url, track=track)
     Session.add(seen)
