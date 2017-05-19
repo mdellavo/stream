@@ -10,18 +10,21 @@ def chain(it):
 
 
 class M3U8Renderer(object):
-    def __init__(self, playlist, root, target_duration=config.TARGET_DURATION):
+    def __init__(self, playlist, root, sequence=0, target_duration=config.TARGET_DURATION, version=7):
         self.playlist = playlist
         self.root = root
+        self.sequence = sequence
         self.target_duration = float(target_duration)
+        self.version = version
 
     def render_format_identifier(self):
         return ["#EXTM3U"]
 
     def render_preamble(self):
         return [
+            "#EXT-X-VERSION:{}".format(self.version),
             "#EXT-X-TARGETDURATION:{}".format(self.target_duration),
-            "#EXT-X-INDEPENDENT-SEGMENTS",
+            "#EXT-X-MEDIA-SEQUENCE:{}".format(self.sequence),
         ]
 
     def render_segment(self, track, segment_num):
@@ -55,14 +58,10 @@ class M3U8Renderer(object):
     def render_playlist(self, playlist):
         return chain(self.render_track(i) for i in playlist.upcoming_schedule)
 
-    def render_endlist(self):
-        return ["#EXT-X-ENDLIST"]
-
     def render(self):
         lines = (
             self.render_format_identifier() +
             self.render_preamble() +
-            self.render_playlist(self.playlist) +
-            self.render_endlist()
+            self.render_playlist(self.playlist)
         )
         return "\n".join(lines)

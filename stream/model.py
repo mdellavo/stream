@@ -120,7 +120,13 @@ class Playlist(Base):
                                  .order_by(ScheduledTrack.start_time.desc())
                                  .first())
 
-        start_time = last_scheduled.end_time if last_scheduled else datetime.datetime.utcnow()
+
+        now = datetime.datetime.utcnow()
+        if last_scheduled and last_scheduled.end_time > now:
+            start_time = last_scheduled.end_time
+        else:
+            start_time = now
+
         end_time = start_time + datetime.timedelta(seconds=track.length)
         scheduled_track = ScheduledTrack(
             playlist=self,
@@ -137,7 +143,7 @@ class ScheduledTrack(Base):
 
     id = Column(Integer, primary_key=True)
     playlist_id = Column(Integer, ForeignKey("playlists.id"), nullable=False)
-    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=False)
+    track_id = Column(Integer, ForeignKey("tracks.id"))
     start_time = Column(DateTime)
     end_time = Column(DateTime)
 

@@ -23,7 +23,6 @@ async def segment_track(track_path, output_path, segment_duration):
         "-i", track_path,
         "-f", "segment",
         "-segment_time", str(segment_duration),
-        "-segment_format", "mpegts",
         output_path,
     ]
     return not subprocess.check_call(args)
@@ -39,6 +38,8 @@ ID3_KEY_MAP = {
 
 async def scrape_metadata(track, track_path):
     info = mutagen.File(track_path)
+    if not info:
+        return []
 
     metadata = {
         MetadataKeys.LENGTH: [str(info.info.length)],
@@ -51,7 +52,7 @@ async def scrape_metadata(track, track_path):
 async def prepare_track(loop, url):
     cache = Cache()
     seen = Session.query(SeenUrl).filter_by(url=url).first()
-    if seen and os.path.exists(cache.get_cache_path(seen.track)):
+    if seen:
         return seen.track
 
     log.info("caching item %s", url)
@@ -73,19 +74,22 @@ async def prepare_track(loop, url):
 
         track = Track(digest=digester.hexdigest())
         metadata = await scrape_metadata(track, f.name)
-        track.metadata_items.extend(metadata)
+        if metadata:
+            Session.add(track)
+            Session.add_all(metadata)
+            track.metadata_items.extend(metadata)
 
-        os.makedirs(cache.get_cache_dir(track), exist_ok=True)
-        cache_path = cache.get_cache_path(track)
-        os.rename(f.name, cache_path)
+            os.makedirs(cache.get_cache_dir(track), exist_ok=True)
+            cache_path = cache.get_cache_path(track)
+            os.rename(f.name, cache_path)
 
-    await segment_track(cache_path, cache.get_segment_format_path(track), config.TARGET_DURATION)
+            await segment_track(cache_path, cache.get_segment_format_path(track), config.TARGET_DURATION)
 
     seen = SeenUrl(url=url, track=track)
-    Session.add_all([track, seen] + metadata)
+    Session.add(seen)
     Session.commit()
 
-    return track
+    return track if metadata else None
 
 
 async def load_playlist(loop, url):
@@ -105,7 +109,12 @@ async def load_playlist(loop, url):
     pool = TaskPool(loop, config.NUM_DOWNLOADS)
     futures = [pool.submit(prepare_track(loop, url)) for url in items_urls]
     await pool.join()
-    tracks = [future.result() for future in futures]
+
+    tracks = []
+    for future in futures:
+        track = future.result()
+        if track:
+            tracks.append(track)
     return tracks
 
 
