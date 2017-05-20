@@ -6,6 +6,16 @@ log = logging.getLogger(__name__)
 TERMINATOR = object()
 
 
+def periodic(loop, delay, fn, *args, **kwargs):
+
+    async def _worker():
+        while True:
+            await fn(*args, **kwargs)
+            await asyncio.sleep(delay, loop=loop)
+
+    asyncio.ensure_future(_worker(), loop=loop)
+
+
 class TaskPool(object):
     def __init__(self, loop, num_workers):
         self.loop = loop

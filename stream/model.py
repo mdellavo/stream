@@ -119,8 +119,6 @@ class Playlist(Base):
                                  .filter_by(playlist=self)
                                  .order_by(ScheduledTrack.start_time.desc())
                                  .first())
-
-
         now = datetime.datetime.utcnow()
         if last_scheduled and last_scheduled.end_time > now:
             start_time = last_scheduled.end_time
@@ -149,3 +147,7 @@ class ScheduledTrack(Base):
 
     playlist = relationship(Playlist)
     track = relationship(Track)
+
+    @property
+    def duration(self):
+        return self.end_time - self.start_time

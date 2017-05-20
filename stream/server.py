@@ -53,10 +53,6 @@ async def handle_segment(request):
     return web.FileResponse(segment_path)
 
 
-async def handle_playlists(request):
-    pass
-
-
 def create_server():
     app = web.Application()
     app.router.add_get("/", handle_request)

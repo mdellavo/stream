@@ -37,7 +37,6 @@ class M3U8Renderer(object):
 
         title = "{} - {} - {}".format(track.artist, track.album, track.title)
         return [
-            #"#EXT-X-DISCONTINUITY",
             "#EXTINF:{},{}".format(float(duration), title),
             "{}/segments/{}/{}".format(self.root, track.digest, segment_num),
         ]

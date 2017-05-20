@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from aiohttp import web
 
 from stream import server, model, audio, config, playlist
+from stream.utils import periodic
 
 log = logging.getLogger("main")
 
@@ -24,9 +25,10 @@ def main():
     urls = sys.argv[1:]
     loop.run_until_complete(audio.load_playlists(loop, urls))
 
-    pl = model.Playlist.find_or_create(config.PLAYLIST_NAME)
+    # FIXME
+    model.Playlist.find_or_create(config.PLAYLIST_NAME)
 
-    asyncio.ensure_future(playlist.schedule(pl))
+    periodic(loop, config.SCHEDULER_PERIOD, playlist.schedule_all)
 
     app = server.create_server()
     web.run_app(app, loop=loop)
