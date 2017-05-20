@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 async def segment_track(track_path, output_path, segment_duration):
     args = [
         "/usr/local/bin/ffmpeg",
-        #"-loglevel", "-8",
+        "-loglevel", "-8",
         "-i", track_path,
         "-vn",
         "-acodec", "aac",
