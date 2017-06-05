@@ -1,9 +1,10 @@
 import os
 import hashlib
 import tempfile
-import urllib
 import logging
 import asyncio
+import urllib
+from asyncio.queues import Queue
 
 from aiohttp import ClientSession
 import mutagen
@@ -11,14 +12,18 @@ import mutagen
 from stream import config
 from stream.model import Session, Track, SeenUrl, TrackMetadata, MetadataKeys
 from stream.cache import Cache
-from stream.utils import TaskPool
 
 log = logging.getLogger(__name__)
 
+WORK_QUEUE = None
+SENTINEL = object()
 
-async def segment_track(track_path, output_path, segment_duration):
+MPEGURL_MIME = "audio/x-mpegurl"
+
+
+async def segment_track(loop, track_path, output_path, segment_duration):
     args = [
-        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
         "-loglevel", "-8",
         "-i", track_path,
         "-vn",
@@ -31,7 +36,7 @@ async def segment_track(track_path, output_path, segment_duration):
         "-segment_time", str(segment_duration),
         output_path,
     ]
-    proc = await asyncio.create_subprocess_exec(*args, stdout=None, stdin=None, stderr=None)
+    proc = await asyncio.create_subprocess_exec(*args, stdout=None, stdin=None, stderr=None, loop=loop)
     return await proc.wait()
 
 
@@ -56,26 +61,21 @@ async def scrape_metadata(track, track_path):
     return [TrackMetadata(track=track, key=k, value=v) for k, vs in metadata.items() for v in vs]
 
 
-async def prepare_track(loop, url):
+async def load_track(loop, url, body):
     cache = Cache()
-    seen = Session.query(SeenUrl).filter_by(url=url).first()
-    if seen:
-        return seen.track
 
-    log.info("caching item %s", url)
+    log.info("preparing track %s", url)
 
-    with tempfile.NamedTemporaryFile(delete=False) as f:
+    with tempfile.NamedTemporaryFile(delete=False, dir=config.TMP_DIR) as f:
 
         digester = hashlib.sha256()
 
-        async with ClientSession(loop=loop) as session, session.get(url) as response:
-
-            while True:
-                chunk = await response.content.read(config.CHUNK_SIZE)
-                if not chunk:
-                    break
-                digester.update(chunk)
-                f.write(chunk)
+        while True:
+            chunk = await body.read(config.CHUNK_SIZE)
+            if not chunk:
+                break
+            digester.update(chunk)
+            f.write(chunk)
 
         f.close()
 
@@ -86,47 +86,77 @@ async def prepare_track(loop, url):
             Session.add_all(metadata)
             track.metadata_items.extend(metadata)
 
+            tmp_path = os.path.join(config.TMP_DIR, f.name)
             os.makedirs(cache.get_cache_dir(track), exist_ok=True)
             cache_path = cache.get_cache_path(track)
-            os.rename(f.name, cache_path)
-            await segment_track(cache_path, cache.get_segment_format_path(track), config.TARGET_DURATION)
+            os.rename(tmp_path, cache_path)
+            await segment_track(loop, cache_path, cache.get_segment_format_path(track), config.TARGET_DURATION)
             os.remove(cache_path)
 
     seen = SeenUrl(url=url, track=track)
     Session.add(seen)
     Session.commit()
 
-    return track if metadata else None
 
+def make_absolute(parent_url, url):
+    parent_url, url = (urllib.parse.urlparse(u) for u in (parent_url, url))
 
-async def load_playlist(loop, url):
-    log.info("loading playlist: %s", url)
-
-    parsed_url = urllib.parse.urlparse(url)
-    if parsed_url.scheme in ("http", "https"):
-        async with ClientSession(loop=loop) as session, session.get(url) as response:
-            body = response.text()
-    elif not parsed_url.scheme or parsed_url.scheme == "file":
-        with open(parsed_url.path) as f:
-            body = f.read()
+    if url.scheme and url.netloc:
+        rv = url
     else:
-        raise ValueError("unknown url scheme: {}".format(url))
-    items_urls = body.splitlines()
+        rv = (
+            parent_url.scheme,
+            parent_url.netloc,
+            url.path,
+            url.params,
+            url.query,
+            url.fragment
+        )
 
-    pool = TaskPool(loop, config.NUM_DOWNLOADS)
-    futures = [pool.submit(prepare_track(loop, url)) for url in items_urls]
-    await pool.join()
-
-    tracks = []
-    for future in futures:
-        track = future.result()
-        if track:
-            tracks.append(track)
-    return tracks
+    return urllib.parse.urlunparse(rv)
 
 
-async def load_playlists(loop, urls):
-    tracks = []
-    for url in urls:
-        tracks.extend(await load_playlist(loop, url))
-    return tracks
+async def load_playlist(url, f):
+    log.info("loading playlist from %s", url)
+    playlist = (await f.read()).decode("utf-8").splitlines()
+
+    for item_url in playlist:
+        if not Session.query(SeenUrl).filter_by(url=item_url).first():
+            queue_url(item_url)
+
+
+def queue_url(url):
+    WORK_QUEUE.put_nowait(url)
+
+
+async def queue_worker(loop):
+    while True:
+        url = await WORK_QUEUE.get()
+        if url is SENTINEL:
+            log.info("worker shutting down...")
+            break
+
+        log.info("loading url: %s", url)
+
+        try:
+            async with ClientSession(loop=loop) as session, session.get(url) as response:
+                content_type = response.headers['Content-Type']
+
+                if content_type == MPEGURL_MIME:
+                    await load_playlist(str(response.url), response.content)
+                else:
+                    await load_track(loop, str(response.url), response.content)
+        except Exception as e:
+            log.exception("worker raised exception: %s", e)
+
+
+def shutdown_workers():
+    for _ in range(config.NUM_WORKERS):
+        queue_url(SENTINEL)
+
+
+def spawn_workers(loop):
+    global WORK_QUEUE
+    WORK_QUEUE = Queue(loop=loop)
+    for _ in range(config.NUM_WORKERS):
+        asyncio.ensure_future(queue_worker(loop), loop=loop)

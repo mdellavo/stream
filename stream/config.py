@@ -3,10 +3,11 @@ import os
 HERE = os.path.dirname(__file__)
 
 CACHE_DIR = os.path.join(HERE, "..", "cache")
+TMP_DIR = os.path.join(HERE, "..", "tmp")
 
 DB_URL = "sqlite:///stream.sqlite"
 
-NUM_DOWNLOADS = 4
+NUM_WORKERS = 4
 CHUNK_SIZE = 64 * 1024
 
 TARGET_DURATION = 10

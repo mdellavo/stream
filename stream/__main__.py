@@ -1,3 +1,4 @@
+import os
 import sys
 import logging
 import asyncio
@@ -13,6 +14,8 @@ log = logging.getLogger("main")
 
 
 def main():
+    os.makedirs(config.TMP_DIR, exist_ok=True)
+
     engine = create_engine(config.DB_URL)
     model.Base.metadata.create_all(engine)
     model.Session.bind = engine
@@ -22,15 +25,23 @@ def main():
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     loop = asyncio.get_event_loop()
 
+    audio.spawn_workers(loop)
+
     urls = sys.argv[1:]
-    loop.run_until_complete(audio.load_playlists(loop, urls))
+    for url in urls:
+        audio.queue_url(url)
 
     # FIXME
     model.Playlist.find_or_create(config.PLAYLIST_NAME)
 
-    periodic(loop, config.SCHEDULER_PERIOD, playlist.schedule_all)
+    scheduler = periodic(loop, config.SCHEDULER_PERIOD, playlist.schedule_all)
+
+    def shutdown(_):
+        scheduler.cancel()
+        audio.shutdown_workers()
 
     app = server.create_server()
+    app.on_shutdown.append(shutdown)
     web.run_app(app, loop=loop)
 
     return 0

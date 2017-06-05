@@ -13,7 +13,7 @@ def periodic(loop, delay, fn, *args, **kwargs):
             await fn(*args, **kwargs)
             await asyncio.sleep(delay, loop=loop)
 
-    asyncio.ensure_future(_worker(), loop=loop)
+    return asyncio.ensure_future(_worker(), loop=loop)
 
 
 class TaskPool(object):
