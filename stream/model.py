@@ -22,6 +22,10 @@ class Track(Base):
     metadata_items = relationship("TrackMetadata")
 
     @property
+    def description(self):
+        return "{} - {} - {}".format(self.artist, self.album, self.title)
+
+    @property
     def metatada(self):
         rv = collections.defaultdict(list)
         for item in self.metadata_items:

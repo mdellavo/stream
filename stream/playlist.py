@@ -15,7 +15,23 @@ def calc_scheduled_minutes(playlist):
     return datetime.timedelta(seconds=sum(durations))
 
 
-async def schedule(playlist):
+def now_playing(loop, st):
+    def _now_playing():
+        log.info("now playing: %s", st.track.description)
+
+    delta = (st.start_time - datetime.datetime.utcnow()).total_seconds()
+
+    loop.call_later(delta, _now_playing)
+
+
+def current_playlists(loop):
+    for playlist in Session.query(Playlist):
+        for st in playlist.upcoming_schedule:
+            log.info("upcoming %s at %s", st.track.description, st.start_time.isoformat())
+            now_playing(loop, st)
+
+
+async def schedule(loop, playlist):
     while calc_scheduled_minutes(playlist) < datetime.timedelta(minutes=config.SCHEDULED_PLAYLIST_MINUES):
 
         track = Session.query(Track).order_by(sa.func.random()).first()
@@ -23,9 +39,9 @@ async def schedule(playlist):
         Session.add(scheduled_track)
         Session.commit()
 
-        log.info("scheduled track %s from %s to %s", track.id, scheduled_track.start_time, scheduled_track.end_time)
+        log.info("scheduled %s at %s", track.description, scheduled_track.start_time.isoformat())
+        now_playing(loop, scheduled_track)
 
-
-async def schedule_all():
+async def schedule_all(loop):
     for playlist in Session.query(Playlist):
-        await schedule(playlist)
+        await schedule(loop, playlist)
