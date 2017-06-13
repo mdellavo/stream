@@ -4,3 +4,5 @@ cache
 *.m3u
 *.sqlite
 tmp
+npm-debug.log
+node_modules
