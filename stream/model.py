@@ -5,6 +5,7 @@ import collections
 from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, or_, and_
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import column_property
 
 from stream import config
 
@@ -43,9 +44,8 @@ class Track(Base):
     def length(self):
         return float(self.get_one(MetadataKeys.LENGTH))
 
-    @property
-    def num_segments(self):
-        return math.ceil(self.length / config.TARGET_DURATION)
+    def calc_num_segments(self, target_duration):
+        return int(math.ceil(self.length / target_duration))
 
     @property
     def title(self):
@@ -96,27 +96,37 @@ class Playlist(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    logo_url = Column(String, nullable=True)
 
-    schedule = relationship("ScheduledTrack", lazy="dynamic",
-                            order_by="ScheduledTrack.start_time")
+    schedule = relationship("ScheduledTrack", lazy="dynamic")
 
     @classmethod
-    def find_or_create(cls, name):
+    def find_or_create(cls, name, **kwargs):
         playlist = Session.query(cls).filter_by(name=name).first()
         if not playlist:
-            playlist = cls(name=name)
+            playlist = cls(name=name, **kwargs)
             Session.add(playlist)
             Session.commit()
         return playlist
 
-    @property
-    def upcoming_schedule(self):
-        now = datetime.datetime.utcnow()
+    def playing_at_query(self, start_time):
+        return and_(ScheduledTrack.start_time <= start_time,
+                    ScheduledTrack.end_time >= start_time)
+
+    def upcoming_schedule(self, start_time):
         query = or_(
-            and_(ScheduledTrack.start_time < now, ScheduledTrack.end_time > now),
-            ScheduledTrack.start_time > now
+            self.playing_at_query(start_time),
+            ScheduledTrack.start_time > start_time
         )
-        return self.schedule.filter(query)
+        return self.schedule.filter(query).order_by(ScheduledTrack.start_time.asc())
+
+    def recent_schedule(self, start_time):
+        query = or_(
+            self.playing_at_query(start_time),
+            ScheduledTrack.start_time < start_time
+        )
+        return self.schedule.filter(query).order_by(ScheduledTrack.start_time.desc())
 
     def append(self, track):
         last_scheduled = (Session.query(ScheduledTrack)

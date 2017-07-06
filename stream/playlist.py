@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 
 def calc_scheduled_minutes(playlist):
-    durations = [st.duration.total_seconds() for st in playlist.upcoming_schedule]
+    durations = [st.duration.total_seconds() for st in playlist.upcoming_schedule(datetime.datetime.utcnow())]
     return datetime.timedelta(seconds=sum(durations))
 
 

@@ -3,6 +3,7 @@ import hashlib
 import tempfile
 import logging
 import asyncio
+import shutil
 import urllib
 from asyncio.queues import Queue
 
@@ -24,10 +25,11 @@ MPEGURL_MIME = "audio/x-mpegurl"
 async def segment_track(loop, track_path, output_path, segment_duration):
     args = [
         "/usr/bin/ffmpeg",
-        "-loglevel", "-8",
+        #"-loglevel", "-8",
         "-i", track_path,
         "-vn",
         "-acodec", "aac",
+        "-strict", "-2",
         "-b:a", config.BITRATE,
         "-map", "0",
         "-flags", "+global_header",
@@ -79,22 +81,30 @@ async def load_track(loop, url, body):
 
         f.close()
 
-        track = Track(digest=digester.hexdigest())
-        metadata = await scrape_metadata(track, f.name)
-        if metadata:
+        digest = digester.hexdigest()
+
+        track = Session.query(Track).filter_by(digest=digest).first()
+        if not track:
+            track = Track(digest=digest)
             Session.add(track)
-            Session.add_all(metadata)
-            track.metadata_items.extend(metadata)
 
-            tmp_path = os.path.join(config.TMP_DIR, f.name)
-            os.makedirs(cache.get_cache_dir(track), exist_ok=True)
-            cache_path = cache.get_cache_path(track)
-            os.rename(tmp_path, cache_path)
-            await segment_track(loop, cache_path, cache.get_segment_format_path(track), config.TARGET_DURATION)
-            os.remove(cache_path)
+        if not track.metatada:
+            metadata = await scrape_metadata(track, f.name)
+            if metadata:
+                Session.add_all(metadata)
+                track.metadata_items.extend(metadata)
 
-    seen = SeenUrl(url=url, track=track)
-    Session.add(seen)
+        tmp_path = os.path.join(config.TMP_DIR, f.name)
+        os.makedirs(cache.get_cache_dir(track), exist_ok=True)
+        cache_path = cache.get_cache_path(track)
+        os.rename(tmp_path, cache_path)
+        await segment_track(loop, cache_path, cache.get_segment_format_path(track), config.TARGET_DURATION)
+        os.remove(cache_path)
+
+    seen = Session.query(SeenUrl).filter_by(url=url, track=track).first()
+    if not seen:
+        seen = SeenUrl(url=url, track=track)
+        Session.add(seen)
     Session.commit()
 
 
