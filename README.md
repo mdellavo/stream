@@ -3,7 +3,7 @@
 ## Example
 ```
 # Buid it
-$ docker build .
+$ docker build -t stream .
 ```
 ```
 # Run API
