@@ -31,10 +31,6 @@ def main():
     for url in urls:
         audio.queue_url(url)
 
-    # FIXME
-    model.Playlist.find_or_create("Test Stream",
-                                  description="a random stream for testing")
-
     scheduler = periodic(loop, config.SCHEDULER_PERIOD, playlist.schedule_all, loop)
 
     def shutdown(_):

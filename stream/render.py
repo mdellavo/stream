@@ -53,7 +53,7 @@ class M3U8Renderer(object):
             if t < scheduled_track.start_time:
                 scheduled_track = next_track()
 
-            segment_num = int(math.ceil((t - scheduled_track.start_time).total_seconds() / self.target_duration))
+            segment_num = int((t - scheduled_track.start_time).total_seconds() / self.target_duration)
             rv.append((scheduled_track, segment_num))
 
         sequence_num = segment_num
@@ -63,9 +63,16 @@ class M3U8Renderer(object):
 
     def render_playlist(self, playlist, start_time):
         parts, sequence_num = self.select_tracks(playlist, start_time)
-        return [
-            "#EXT-X-MEDIA-SEQUENCE:{}".format(sequence_num)
-        ] + chain(self.render_segment(scheduled_track.track, segment_num) for scheduled_track, segment_num in parts)
+
+        rv = ["#EXT-X-MEDIA-SEQUENCE:{}".format(sequence_num)]
+
+        for scheduled_track, segment_num in parts:
+            if segment_num == 0:
+                rv.append("#EXT-X-DISCONTINUITY")
+
+            rv.extend(self.render_segment(scheduled_track.track, segment_num))
+
+        return rv
 
     def render(self, playlist, start_time):
         lines = (
